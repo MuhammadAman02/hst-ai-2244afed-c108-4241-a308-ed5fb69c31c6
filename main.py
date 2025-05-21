@@ -12,24 +12,15 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Default to FastAPI if not specified
 FRAMEWORK = os.getenv("FRAMEWORK", "fastapi").lower()
 
-# Import the appropriate application based on the framework
 if FRAMEWORK == "nicegui":
-    try:
-        from nicegui import ui, app as nicegui_app
-        # Setup NiceGUI app here
-        application = nicegui_app
-    except ImportError:
-        print("NiceGUI not installed. Please install with: pip install nicegui")
-        exit(1)
+    from app.frontend.nicegui_app import ui
+    
+    if __name__ == "__main__":
+        ui.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
 else:
     # Default to FastAPI
     from app import app
-    application = app
-
-# This is used by ASGI servers like Uvicorn
-app = application
-
-if __name__ == "__main__":
     import uvicorn
-    # Run the application with uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=True)
+
+    if __name__ == "__main__":
+        uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=True)

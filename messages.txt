@@ -1,2 +1,4 @@
 "generate me irish fraud detection system in python"
 
+"please add the  frontend ui also for the generated project in python"
+

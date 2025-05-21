@@ -1,77 +1,69 @@
-from nicegui import ui, app
-import logging
-import asyncio
+from nicegui import ui
+from app.models.transaction import Transaction
+from app.services.fraud_detection import detect_fraud
+from app.db.database import get_db
+from datetime import datetime, timedelta
+import httpx
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+async def submit_transaction(sender: str, recipient: str, amount: float):
+    transaction = Transaction(
+        amount=amount,
+        sender=sender,
+        recipient=recipient,
+        timestamp=datetime.now()
+    )
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post("http://localhost:8000/api/transactions/", json=transaction.dict())
+    
+    if response.status_code == 200:
+        result = response.json()
+        if result['is_fraudulent']:
+            ui.notify('Potential fraud detected!', color='negative')
+        else:
+            ui.notify('Transaction processed successfully', color='positive')
+    else:
+        ui.notify('Error processing transaction', color='negative')
 
-# Initialize counter for demo
-count = 0
+async def get_transactions():
+    async with httpx.AsyncClient() as client:
+        response = await client.get("http://localhost:8000/api/transactions/")
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        ui.notify('Error fetching transactions', color='negative')
+        return []
 
-# Define the main page
 @ui.page('/')
-def main_page():
-    """Main page of the NiceGUI application."""
-    with ui.card().classes('w-full max-w-3xl mx-auto'):
-        ui.label('NiceGUI Application').classes('text-2xl font-bold')
-        ui.markdown('''
-        Welcome to the NiceGUI application! NiceGUI allows you to create web UIs with Python.
-        
-        Features:
-        - Build UIs with pure Python
-        - Real-time updates
-        - Easy integration with FastAPI
-        - Interactive components
-        ''')
-        
-        # Counter demo
-        with ui.row().classes('items-center'):
-            ui.label('Counter:').classes('mr-2')
-            label = ui.label(str(count)).classes('text-lg font-bold')
-            
-            def increment():
-                global count
-                count += 1
-                label.text = str(count)
-                logger.info(f"Counter incremented to {count}")
-            
-            def decrement():
-                global count
-                count -= 1
-                label.text = str(count)
-                logger.info(f"Counter decremented to {count}")
-            
-            ui.button('Decrement', on_click=decrement).props('color=red')
-            ui.button('Increment', on_click=increment).props('color=green')
-        
-        # Add a chart for demonstration
-        with ui.card().classes('w-full mt-4'):
-            ui.label('Sample Chart').classes('text-xl')
-            chart = ui.chart({
-                'title': {'text': 'Sample Data'},
-                'xAxis': {'categories': ['Jan', 'Feb', 'Mar', 'Apr', 'May']},
-                'series': [{
-                    'name': 'Data Series 1',
-                    'data': [29, 71, 106, 129, 144]
-                }, {
-                    'name': 'Data Series 2',
-                    'data': [80, 120, 105, 110, 95]
-                }]
-            }).classes('h-64')
+async def main():
+    ui.label('Irish Fraud Detection System').classes('text-h3 text-weight-bold')
 
-# API endpoints can be added with FastAPI
-@app.get('/api/health')
-def health_check():
-    """Health check endpoint."""
-    return {'status': 'ok'}
+    with ui.card():
+        ui.label('Submit New Transaction').classes('text-h5')
+        sender = ui.input('Sender')
+        recipient = ui.input('Recipient')
+        amount = ui.number('Amount', format='%.2f')
+        ui.button('Submit', on_click=lambda: submit_transaction(sender.value, recipient.value, amount.value))
 
-# Configure app
-app.title = 'NiceGUI Application'
+    with ui.card():
+        ui.label('Recent Transactions').classes('text-h5')
+        table = ui.table(columns=[
+            {'name': 'id', 'label': 'ID', 'field': 'id', 'required': True, 'align': 'left'},
+            {'name': 'amount', 'label': 'Amount', 'field': 'amount', 'sortable': True},
+            {'name': 'sender', 'label': 'Sender', 'field': 'sender', 'sortable': True},
+            {'name': 'recipient', 'label': 'Recipient', 'field': 'recipient', 'sortable': True},
+            {'name': 'timestamp', 'label': 'Timestamp', 'field': 'timestamp', 'sortable': True},
+            {'name': 'is_fraudulent', 'label': 'Fraudulent?', 'field': 'is_fraudulent', 'sortable': True},
+        ], rows=[])
 
-# This is needed for the main.py integration
-if __name__ == '__main__':
-    ui.run()
+        async def refresh_transactions():
+            transactions = await get_transactions()
+            table.rows = transactions
+            ui.notify('Transactions refreshed', color='info')
+
+        ui.button('Refresh', on_click=refresh_transactions)
+
+    await refresh_transactions()
+
+ui.run(port=8080)
